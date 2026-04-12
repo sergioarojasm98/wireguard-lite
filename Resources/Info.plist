@@ -13,10 +13,10 @@
     <string>com.local.wireguard-lite</string>
 
     <key>CFBundleVersion</key>
-    <string>1.0.0</string>
+    <string>0.0.0</string>
 
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>0.0.0</string>
 
     <key>CFBundlePackageType</key>
     <string>APPL</string>
@@ -37,5 +37,8 @@
     <!-- Required for osascript privilege escalation -->
     <key>NSAppleEventsUsageDescription</key>
     <string>WireGuard Lite needs to run privileged commands to manage VPN connections.</string>
+
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026 Sergio Rojas. MIT License.</string>
 </dict>
 </plist>

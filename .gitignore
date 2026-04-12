@@ -1,4 +1,19 @@
+# Build output
 build/
+
+# macOS
 .DS_Store
 *.swp
 *~
+
+# Swift/Xcode artifacts
+*.o
+*.dSYM/
+*.xcodeproj
+xcuserdata/
+.build/
+DerivedData/
+
+# Editor
+.vscode/
+*.sublime-*

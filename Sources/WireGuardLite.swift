@@ -4,11 +4,10 @@ import Cocoa
 
 class StatusBarController: NSObject {
 
-    static let version = "1.0.0"
-
     private let statusItem: NSStatusItem
     private var isConnected: Bool = false
     private var isProcessing: Bool = false
+    private var lastError: String = ""
     private var timer: Timer?
 
     private let configPath: String
@@ -17,7 +16,11 @@ class StatusBarController: NSObject {
 
     /// Finds the first existing path from a list of candidates.
     private static func findFirst(_ candidates: [String]) -> String {
-        candidates.first { FileManager.default.fileExists(atPath: $0) } ?? candidates[0]
+        if let found = candidates.first(where: { FileManager.default.fileExists(atPath: $0) }) {
+            return found
+        }
+        NSLog("WireGuard Lite: none of the expected paths found: %@", candidates.joined(separator: ", "))
+        return candidates[0]
     }
 
     override init() {
@@ -147,9 +150,7 @@ class StatusBarController: NSObject {
             let success = self.runWgQuick(action: action)
 
             // Give wg-quick a moment to create/remove state files
-            Thread.sleep(forTimeInterval: 1.0)
-
-            DispatchQueue.main.async {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 self.isProcessing = false
                 self.refreshStatus()
                 self.updateUI()
@@ -170,17 +171,22 @@ class StatusBarController: NSObject {
         ]
 
         // 1) Try passwordless sudo first (works after `make setup`)
-        if runProcess("/usr/bin/sudo", args: ["-n", wgQuickPath, action, configPath], env: env) {
+        let sudoResult = runProcess("/usr/bin/sudo", args: ["-n", wgQuickPath, action, configPath], env: env)
+        if sudoResult.success {
             return true
         }
 
         // 2) Fallback: osascript privilege prompt (shows password dialog)
-        let command = "PATH=/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin \(wgQuickPath) \(action) \(configPath)"
-        return runOsascriptPrivileged(command)
+        let pathEnv = ["PATH": "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"]
+        let result = runOsascriptPrivileged(command: wgQuickPath, args: [action, configPath], env: pathEnv)
+        if !result.success {
+            lastError = result.output.isEmpty ? sudoResult.output : result.output
+        }
+        return result.success
     }
 
-    /// Runs an executable with optional environment.  Returns true on exit-code 0.
-    private func runProcess(_ path: String, args: [String], env: [String: String]? = nil) -> Bool {
+    /// Runs an executable with optional environment.  Returns success flag and captured output.
+    private func runProcess(_ path: String, args: [String], env: [String: String]? = nil) -> (success: Bool, output: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = args
@@ -193,18 +199,29 @@ class StatusBarController: NSObject {
         do {
             try process.run()
             process.waitUntilExit()
-            return process.terminationStatus == 0
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            return (process.terminationStatus == 0, output)
         } catch {
-            return false
+            return (false, error.localizedDescription)
         }
     }
 
     /// Asks for the admin password via the native macOS dialog (osascript fallback).
-    private func runOsascriptPrivileged(_ command: String) -> Bool {
-        let escaped = command
+    /// Builds a properly shell-quoted command to prevent injection.
+    private func runOsascriptPrivileged(command: String, args: [String], env: [String: String] = [:]) -> (success: Bool, output: String) {
+        // Shell-quote a single argument using single quotes
+        func shellQuote(_ s: String) -> String {
+            return "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        }
+        let envPrefix = env.map { "\($0.key)=\(shellQuote($0.value))" }.joined(separator: " ")
+        let quoted = ([command] + args).map { shellQuote($0) }.joined(separator: " ")
+        let full = envPrefix.isEmpty ? quoted : "\(envPrefix) \(quoted)"
+        // Escape for AppleScript string literal (backslash, then double-quote)
+        let asEscaped = full
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
-        return runProcess("/usr/bin/osascript", args: ["-e", "do shell script \"\(escaped)\" with administrator privileges"])
+        return runProcess("/usr/bin/osascript", args: ["-e", "do shell script \"\(asEscaped)\" with administrator privileges"])
     }
 
     // MARK: - Alerts
@@ -212,7 +229,12 @@ class StatusBarController: NSObject {
     private func showToggleError() {
         let alert = NSAlert()
         alert.messageText = "WireGuard Error"
-        alert.informativeText = "Failed to toggle the VPN connection.\n\nMake sure wg-quick is installed and the config file exists at:\n\(configPath)"
+        var info = "Failed to toggle the VPN connection.\n\nMake sure wg-quick is installed and the config file exists at:\n\(configPath)"
+        let trimmed = lastError.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            info += "\n\nDetails:\n\(trimmed)"
+        }
+        alert.informativeText = info
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
         alert.runModal()
@@ -238,6 +260,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var controller: StatusBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Prevent multiple instances
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.local.wireguard-lite"
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        if running.count > 1 {
+            NSApp.terminate(nil)
+            return
+        }
         controller = StatusBarController()
     }
 }

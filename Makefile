@@ -1,5 +1,5 @@
 APP_NAME    = WireGuardLite
-VERSION     = 1.0.0
+VERSION     = 1.1.0
 BUILD_DIR   = build
 APP_BUNDLE  = $(BUILD_DIR)/$(APP_NAME).app
 BINARY      = $(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)
@@ -11,6 +11,12 @@ SWIFT_X86    = $(SWIFT_COMMON) -target x86_64-apple-macosx12.0
 
 SUDOERS_FILE  = /etc/sudoers.d/wireguard-lite
 WG_QUICK      = $(shell command -v wg-quick 2>/dev/null || echo /opt/homebrew/bin/wg-quick)
+
+# Code-signing identity (use '-' for ad-hoc; override with Developer ID for distribution)
+SIGN_IDENTITY ?= -
+
+# All three standard config locations
+WG_CONFIGS = /opt/homebrew/etc/wireguard/wg0.conf /usr/local/etc/wireguard/wg0.conf /etc/wireguard/wg0.conf
 LAUNCH_AGENT  = $(HOME)/Library/LaunchAgents/com.local.wireguard-lite.plist
 
 .PHONY: all run install uninstall setup unsetup autostart noautostart clean
@@ -32,8 +38,10 @@ $(APP_BUNDLE): $(SOURCES) Resources/Info.plist
 	lipo -create "$(BUILD_DIR)/$(APP_NAME)-arm64" "$(BUILD_DIR)/$(APP_NAME)-x86_64" -output "$(BINARY)"
 	@rm -f "$(BUILD_DIR)/$(APP_NAME)-arm64" "$(BUILD_DIR)/$(APP_NAME)-x86_64"
 	cp Resources/Info.plist "$(APP_BUNDLE)/Contents/"
+	/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(VERSION)" "$(APP_BUNDLE)/Contents/Info.plist"
+	/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(VERSION)" "$(APP_BUNDLE)/Contents/Info.plist"
 	cp Resources/AppIcon.icns "$(APP_BUNDLE)/Contents/Resources/" 2>/dev/null || true
-	codesign --force --sign - "$(APP_BUNDLE)"
+	codesign --force --sign "$(SIGN_IDENTITY)" "$(APP_BUNDLE)"
 
 # ── Run (from build dir) ────────────────────────────────
 run: $(APP_BUNDLE)
@@ -52,9 +60,15 @@ uninstall:
 # ── Setup passwordless sudo for wg-quick ────────────────
 setup:
 	@echo "Creating sudoers rule for $(WG_QUICK)..."
-	@echo "$(shell whoami) ALL=(ALL) NOPASSWD: $(WG_QUICK)" | sudo tee $(SUDOERS_FILE) > /dev/null
+	@{ \
+		for conf in $(WG_CONFIGS); do \
+			echo "$(shell whoami) ALL=(ALL) NOPASSWD: $(WG_QUICK) up $$conf"; \
+			echo "$(shell whoami) ALL=(ALL) NOPASSWD: $(WG_QUICK) down $$conf"; \
+		done; \
+	} | sudo tee $(SUDOERS_FILE) > /dev/null
 	sudo chmod 0440 $(SUDOERS_FILE)
-	@echo "Done. wg-quick now runs without a password prompt."
+	sudo visudo -cf $(SUDOERS_FILE) || { sudo rm -f $(SUDOERS_FILE); echo "ERROR: invalid sudoers syntax"; exit 1; }
+	@echo "Done. wg-quick up/down restricted to known config paths."
 
 # ── Remove passwordless sudo ────────────────────────────
 unsetup:
@@ -64,23 +78,7 @@ unsetup:
 # ── Auto-start on login ─────────────────────────────────
 autostart:
 	@mkdir -p "$(HOME)/Library/LaunchAgents"
-	@echo '<?xml version="1.0" encoding="UTF-8"?>'                                        >  $(LAUNCH_AGENT)
-	@echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"'                           >> $(LAUNCH_AGENT)
-	@echo '  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'                           >> $(LAUNCH_AGENT)
-	@echo '<plist version="1.0">'                                                          >> $(LAUNCH_AGENT)
-	@echo '<dict>'                                                                         >> $(LAUNCH_AGENT)
-	@echo '    <key>Label</key>'                                                           >> $(LAUNCH_AGENT)
-	@echo '    <string>com.local.wireguard-lite</string>'                                  >> $(LAUNCH_AGENT)
-	@echo '    <key>ProgramArguments</key>'                                                >> $(LAUNCH_AGENT)
-	@echo '    <array>'                                                                    >> $(LAUNCH_AGENT)
-	@echo '        <string>/Applications/$(APP_NAME).app/Contents/MacOS/$(APP_NAME)</string>' >> $(LAUNCH_AGENT)
-	@echo '    </array>'                                                                   >> $(LAUNCH_AGENT)
-	@echo '    <key>RunAtLoad</key>'                                                       >> $(LAUNCH_AGENT)
-	@echo '    <true/>'                                                                    >> $(LAUNCH_AGENT)
-	@echo '    <key>KeepAlive</key>'                                                       >> $(LAUNCH_AGENT)
-	@echo '    <false/>'                                                                   >> $(LAUNCH_AGENT)
-	@echo '</dict>'                                                                        >> $(LAUNCH_AGENT)
-	@echo '</plist>'                                                                       >> $(LAUNCH_AGENT)
+	sed 's/__APP_NAME__/$(APP_NAME)/g' Resources/LaunchAgent.plist.template > $(LAUNCH_AGENT)
 	@echo "Auto-start enabled. WireGuard Lite will launch on login."
 
 # ── Remove auto-start ───────────────────────────────────
