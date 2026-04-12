@@ -4,16 +4,12 @@ Minimal macOS menu-bar app to toggle WireGuard VPN connections. Built for enviro
 
 ## How It Works
 
-```
-┌─────────────┐    sudo wg-quick up/down    ┌──────────────────┐
-│  Menu Bar   │ ───────────────────────────▶ │  wg-quick (CLI)  │
-│  (Swift UI) │                              │  via Homebrew     │
-└──────┬──────┘                              └────────┬─────────┘
-       │ polls /var/run/wireguard/wg0.name            │
-       │ every 5s to detect state changes             │ manages
-       ▼                                              ▼
-   Status icon                                 WireGuard tunnel
-   (lock.shield)                                  (wg0.conf)
+```mermaid
+graph LR
+    A["Menu Bar<br/>(Swift UI)"] -->|sudo wg-quick up/down| B["wg-quick<br/>(Homebrew CLI)"]
+    B -->|manages| C["WireGuard Tunnel<br/>(wg0.conf)"]
+    C -->|state file| A
+    A -.->|polls /var/run/wireguard/wg0.name<br/>every 5s| A
 ```
 
 - Wraps `wg-quick` from Homebrew — zero extra dependencies
