@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-04-12
+
+### Fixed
+- Race condition where two simultaneous instances would both terminate (now only the newer PID exits)
+- `generate_icon.swift` now calls `iconutil --convert icns` to produce the final `.icns` file
+- `WG_QUICK` path resolution in Makefile now matches the app's `findFirst` candidate list
+- `make autostart` now activates the LaunchAgent immediately via `launchctl load`
+- `make noautostart` now deactivates the agent via `launchctl unload` before removing
+
+### Changed
+- Neutralized project description — removed references to corporate/managed environments
+
 ## [1.1.0] - 2026-04-12
 
 ### Security

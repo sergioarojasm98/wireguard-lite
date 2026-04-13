@@ -1,5 +1,5 @@
 APP_NAME    = WireGuardLite
-VERSION     = 1.1.0
+VERSION     = 1.1.1
 BUILD_DIR   = build
 APP_BUNDLE  = $(BUILD_DIR)/$(APP_NAME).app
 BINARY      = $(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)
@@ -10,7 +10,7 @@ SWIFT_ARM64  = $(SWIFT_COMMON) -target arm64-apple-macosx12.0
 SWIFT_X86    = $(SWIFT_COMMON) -target x86_64-apple-macosx12.0
 
 SUDOERS_FILE  = /etc/sudoers.d/wireguard-lite
-WG_QUICK      = $(shell command -v wg-quick 2>/dev/null || echo /opt/homebrew/bin/wg-quick)
+WG_QUICK      = $(shell for p in /opt/homebrew/bin/wg-quick /usr/local/bin/wg-quick /usr/bin/wg-quick; do [ -x "$$p" ] && echo "$$p" && break; done || echo /opt/homebrew/bin/wg-quick)
 
 # Code-signing identity (use '-' for ad-hoc; override with Developer ID for distribution)
 SIGN_IDENTITY ?= -
@@ -79,12 +79,14 @@ unsetup:
 autostart:
 	@mkdir -p "$(HOME)/Library/LaunchAgents"
 	sed 's/__APP_NAME__/$(APP_NAME)/g' Resources/LaunchAgent.plist.template > $(LAUNCH_AGENT)
-	@echo "Auto-start enabled. WireGuard Lite will launch on login."
+	launchctl load $(LAUNCH_AGENT) 2>/dev/null || true
+	@echo "Auto-start enabled and agent loaded."
 
 # ── Remove auto-start ───────────────────────────────────
 noautostart:
+	launchctl unload $(LAUNCH_AGENT) 2>/dev/null || true
 	rm -f $(LAUNCH_AGENT)
-	@echo "Auto-start disabled."
+	@echo "Auto-start disabled and agent unloaded."
 
 # ── Clean ────────────────────────────────────────────────
 clean:

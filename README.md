@@ -1,6 +1,6 @@
 # wireguard-lite
 
-Minimal macOS menu-bar app to toggle WireGuard VPN connections. Built for environments where the official App Store client is unavailable — corporate Macs, managed devices, or any setup where only Homebrew is an option.
+Minimal macOS menu-bar app to toggle WireGuard VPN connections. A lightweight, open-source alternative to the official App Store client — built with Swift, no Xcode project required.
 
 ## How It Works
 

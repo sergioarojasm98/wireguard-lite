@@ -260,10 +260,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var controller: StatusBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Prevent multiple instances
+        // Prevent multiple instances (lowest PID wins to avoid mutual kill)
         let bundleID = Bundle.main.bundleIdentifier ?? "com.local.wireguard-lite"
-        let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-        if running.count > 1 {
+        let myPID = ProcessInfo.processInfo.processIdentifier
+        let olderExists = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .contains { $0.processIdentifier != myPID && $0.processIdentifier < myPID }
+        if olderExists {
             NSApp.terminate(nil)
             return
         }

@@ -74,4 +74,21 @@ for (name, px) in sizes {
     }
 }
 
-print("Icon set generated.")
+print("Icon set generated at \(iconsetDir)")
+
+// ── Convert .iconset to .icns ──
+let iconutil = Process()
+iconutil.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
+iconutil.arguments = ["--convert", "icns", iconsetDir, "--output", "Resources/AppIcon.icns"]
+do {
+    try iconutil.run()
+    iconutil.waitUntilExit()
+    if iconutil.terminationStatus != 0 {
+        fputs("Error: iconutil exited with status \(iconutil.terminationStatus)\n", stderr)
+        exit(1)
+    }
+    print("Converted to Resources/AppIcon.icns")
+} catch {
+    fputs("Error running iconutil: \(error.localizedDescription)\n", stderr)
+    exit(1)
+}
